@@ -11,7 +11,7 @@ async fn record_event_to_persistence_backend() {
 
     let recorder = Recorder::new(storage).await;
     recorder.save(record);
-    let storage = recorder.into_storage().await;
+    let storage = recorder.close().await;
 
     assert_eq!(["Hello, World!"].as_slice(), storage);
 }
@@ -30,7 +30,7 @@ async fn persist_events_in_bulk() {
     }
     // Now the guard has been freed. Storage can now persist immediatly. Wait for this to be
     // fininshed.
-    let _ = recorder.into_storage().await;
+    let _ = recorder.close().await;
 
     // Verify that there is one bulk with two entries.
     let bulks = bulks.lock().await;

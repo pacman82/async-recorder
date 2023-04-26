@@ -6,14 +6,19 @@ use tokio::{
     task::JoinHandle,
 };
 
-/// Persists records asynchronously
+/// Persists records asynchronously.
 ///
-/// This interface is fire and forget, which makes it synchronous. It will not wait for the record
-/// to be persisted. Recorder takes ownership of an actor running asynchronously, storing anything
-/// send to it.
+/// You may want to use this instead of directly calling your persistence backend if you do not want
+/// to wait for the record to be persisted, in the handler which created the record. To achieve this
+/// Recoder spawns an actor to which all records are sent immediatly. The actor when uses the
+/// [`Storage`] trait to talk to your persistence backend.
+/// 
+/// Recorder takes ownership of an actor and the green thread it is running in.
 pub struct Recorder<T: Storage> {
     /// We need the handle to make sure we join the actor before our recorder goes out of scope.
     join_handle: JoinHandle<T>,
+    /// We choose an unbounded sender since we want to talk from sync to async code without waiting
+    /// for the persistence backend to catch up.
     sender: UnboundedSender<Message<T::Record>>,
 }
 
@@ -32,16 +37,19 @@ where
         }
     }
 
-    /// Sends the record to the internal actor for storage. This function will return immediatly.
-    /// the record might only be persisted later.
+    /// Sends the record to the internal actor for storage. This interface is fire and forget. It
+    /// will not wait for the record to be actually persisted, just place it in the channel for the
+    /// actor to pick up. This is why this method is both synchronous and non blocking.
     pub fn save(&self, record: T::Record) {
         self.sender
             .send(Message(record))
             .expect("Receiver must not be closed.")
     }
 
-    /// Stop the actor, deconstruct the recorder. Yields access to the underlying storage.
-    pub async fn into_storage(self) -> T {
+    /// Stop accepting new records to save, persist the ones send so far.
+    /// 
+    /// Gives back ownership of the underlying storage.
+    pub async fn close(self) -> T {
         // Close sender, so we stop sending messages and `Actor::run`.
         drop(self.sender);
         // Now that actor run nows it should terminate, we wait for it.
