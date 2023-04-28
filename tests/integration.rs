@@ -43,9 +43,12 @@ async fn read_from_storage() {
     let storage = Vec::new();
 
     let recorder = Recorder::new(storage).await;
+    // We write three records
     recorder.save("first");
     recorder.save("second");
-    let records = recorder.records().await;
+    recorder.save("third");
+    // Using this query we will only see the first two
+    let records = recorder.records(0..3).await;
     let _ = recorder.close().await;
 
     assert_eq!(["first", "second"].as_slice(), records);
@@ -66,6 +69,7 @@ impl<T> BlockableStorageSpy<T> {
 #[async_trait]
 impl<T> Storage for BlockableStorageSpy<T> where T: Send {
     type Record = T;
+    type Query = ();
 
     async fn save(&mut self, records: &mut Vec<T>) {
         let mut tmp = Vec::new();
@@ -73,7 +77,7 @@ impl<T> Storage for BlockableStorageSpy<T> where T: Send {
         self.bulks.lock().await.push(tmp);
     }
 
-    async fn load(&mut self) -> Vec<T> {
+    async fn load(&mut self, _query: ()) -> Vec<T> {
         // Not called yet. Dummy implementation
         Vec::new()
     }

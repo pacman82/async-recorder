@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use async_trait::async_trait;
 
 /// Can save records asynchronously
@@ -5,6 +7,9 @@ use async_trait::async_trait;
 pub trait Storage {
     /// Records saved in the storage
     type Record;
+
+    /// Describes the desired data for the load operation. Usefull for e.g. applying filters.
+    type Query;
 
     /// Saves all the records to the persistence backend. Note that this method is infallible. This
     /// implies that the responsibility of handling errors lies with the implementation of this
@@ -20,7 +25,7 @@ pub trait Storage {
     async fn save(&mut self, records: &mut Vec<Self::Record>);
 
     /// Load the contents of the storage as a list of records.
-    async fn load(&mut self) -> Vec<Self::Record>;
+    async fn load(&mut self, query: Self::Query) -> Vec<Self::Record>;
 }
 
 /// This implementation is usefull for using as a fake for testing. In production you are more
@@ -30,13 +35,14 @@ impl<T> Storage for Vec<T>
 where
     T: Send + Clone,
 {
+    type Query = Range<usize>;
     type Record = T;
 
     async fn save(&mut self, records: &mut Vec<T>) {
         self.append(records);
     }
 
-    async fn load(&mut self) -> Vec<T> {
-        self.clone()
+    async fn load(&mut self, query: Range<usize>) -> Vec<T> {
+        self[query].to_owned()
     }
 }
