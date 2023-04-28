@@ -19,7 +19,7 @@ pub struct Recorder<T: Storage> {
     join_handle: JoinHandle<T>,
     /// We choose an unbounded sender since we want to talk from sync to async code without waiting
     /// for the persistence backend to catch up.
-    sender: UnboundedSender<Message<T::Record>>,
+    sender: UnboundedSender<Command<T::Record>>,
 }
 
 impl<T> Recorder<T>
@@ -42,7 +42,7 @@ where
     /// actor to pick up. This is why this method is both synchronous and non blocking.
     pub fn save(&self, record: T::Record) {
         self.sender
-            .send(Message(record))
+            .send(Command(record))
             .expect("Receiver must not be closed.")
     }
 
@@ -62,14 +62,14 @@ where
 /// Asynchronously spawned by [`Recorder`] in order to persist records
 struct Actor<T: Storage> {
     storage: T,
-    receiver: UnboundedReceiver<Message<T::Record>>,
+    receiver: UnboundedReceiver<Command<T::Record>>,
 }
 
 impl<T> Actor<T>
 where
     T: Storage,
 {
-    pub fn new(storage: T, receiver: UnboundedReceiver<Message<T::Record>>) -> Self {
+    pub fn new(storage: T, receiver: UnboundedReceiver<Command<T::Record>>) -> Self {
         Self { storage, receiver }
     }
 
@@ -78,10 +78,10 @@ where
         // the last call to save in one bulk;
         let mut bulk = Vec::new();
         // Insert records until channel is closed.
-        while let Some(Message(record)) = self.receiver.recv().await {
+        while let Some(Command(record)) = self.receiver.recv().await {
             bulk.push(record);
             // Push records into bulk, until it would block again.
-            while let Ok(Message(record)) = self.receiver.try_recv() {
+            while let Ok(Command(record)) = self.receiver.try_recv() {
                 bulk.push(record);
             }
             self.storage.save(&mut bulk).await;
@@ -91,12 +91,13 @@ where
     }
 }
 
-/// Message send from recorder to actor. allowes for custom debug implementation.
-struct Message<T>(T);
+/// Message send from recorder to actor. Allowes for custom debug implementation lifting the
+/// limitation that `T` has to be `Debug`.
+struct Command<T>(T);
 
 /// Custom implementation of debug for Message, which does not rely on the record type `T` to be
 /// debug itstelf.
-impl<T> std::fmt::Debug for Message<T> {
+impl<T> std::fmt::Debug for Command<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("Record").finish()
     }
