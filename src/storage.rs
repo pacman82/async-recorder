@@ -18,6 +18,9 @@ pub trait Storage {
     /// so we can reuse it, without having to reallocate it a lot during the lifetime of our
     /// application.
     async fn save(&mut self, records: &mut Vec<Self::Record>);
+
+    /// Load the contents of the storage as a list of records.
+    async fn load(&mut self) -> Vec<Self::Record>;
 }
 
 /// This implementation is usefull for using as a fake for testing. In production you are more
@@ -25,11 +28,15 @@ pub trait Storage {
 #[async_trait]
 impl<T> Storage for Vec<T>
 where
-    T: Send,
+    T: Send + Clone,
 {
     type Record = T;
 
     async fn save(&mut self, records: &mut Vec<T>) {
         self.append(records);
+    }
+
+    async fn load(&mut self) -> Vec<T> {
+        self.clone()
     }
 }

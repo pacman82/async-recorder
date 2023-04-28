@@ -1,7 +1,7 @@
 use crate::Storage;
 use std::fmt::Formatter;
 use tokio::{
-    sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
+    sync::{mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender}, oneshot},
     task::JoinHandle,
 };
 
@@ -41,7 +41,7 @@ where
     /// actor to pick up. This is why this method is both synchronous and non blocking.
     pub fn save(&self, record: T::Record) {
         self.sender
-            .send(Command(record))
+            .send(Command::Save(record))
             .expect("Receiver must not be closed.")
     }
 
@@ -55,6 +55,13 @@ where
         self.join_handle
             .await
             .expect("Recorder actor thread must always be able to join")
+    }
+
+    /// All the records stored in the internal storage.
+    pub async fn records(&self) -> Vec<T::Record> {
+        let (sender, receiver) = oneshot::channel();
+        self.sender.send(Command::Load(sender)).expect("Receiver must not be closed");
+        receiver.await.expect("The sender must not be dropped")
     }
 }
 
@@ -76,15 +83,43 @@ where
         // If messages come in fast, we do not send them one by one, but rather collect all since
         // the last call to save in one bulk;
         let mut bulk = Vec::new();
-        // Insert records until channel is closed.
-        while let Some(Command(record)) = self.receiver.recv().await {
-            bulk.push(record);
-            // Push records into bulk, until it would block again.
-            while let Ok(Command(record)) = self.receiver.try_recv() {
-                bulk.push(record);
-            }
-            self.storage.save(&mut bulk).await;
-            bulk.clear();
+        let mut current = self.receiver.recv().await;
+        while let Some(command) = current.take() {
+            let next = match command {
+                Command::Save(record) => {
+                    bulk.push(record);
+                    // Push all immediatly available records into the next bulk, until it would
+                    // block again, or we would have to serve a load command.
+                    let next = loop {
+                        match self.receiver.try_recv() {
+                            Ok(Command::Save(record)) => bulk.push(record),
+                            Ok(other) => break Some(other),
+                            Err(_) => break None,
+                        }
+                    };
+                    self.storage.save(&mut bulk).await;
+                    bulk.clear();
+                    next
+                },
+                Command::Load(sender) => {
+                    // Fetch records ...
+                    let records = self.storage.load().await;
+                    // ... and answer sender. This might fail, but if the sender is dropped and
+                    // stopped, caring, so do we. Let's drop the result.
+                    let _ = sender.send(records);
+                    // We did not peek ahead, so we do not know the next command.
+                    None
+                },
+            };
+            // Use next or wait for next event
+            current = if next.is_none() {
+                // Wait for the next event, can block. If none this means recorder has been dropped
+                // and we terminate this loop.
+                self.receiver.recv().await
+            } else {
+                // We already know the next event to process, since we had to peek ahead.
+                next
+            };
         }
         self.storage
     }
@@ -92,12 +127,20 @@ where
 
 /// Message send from recorder to actor. Allowes for custom debug implementation lifting the
 /// limitation that `T` has to be `Debug`.
-struct Command<T>(T);
+enum Command<T> {
+    /// Save record T to the storage backend
+    Save(T),
+    /// Load all records from the storage. Use the sender to return them back to the caller.
+    Load(oneshot::Sender<Vec<T>>),
+}
 
 /// Custom implementation of debug for Message, which does not rely on the record type `T` to be
 /// debug itstelf.
 impl<T> std::fmt::Debug for Command<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("Record").finish()
+        match self {
+            Command::Save(_) => f.debug_tuple("Save").finish(),
+            Command::Load(_) => f.debug_tuple("Load").finish(),
+        }
     }
 }

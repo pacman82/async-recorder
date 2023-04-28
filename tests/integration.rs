@@ -6,7 +6,7 @@ use tokio::sync::Mutex;
 
 #[tokio::test]
 async fn record_event_to_persistence_backend() {
-    let record = "Hello, World!".to_owned();
+    let record = "Hello, World!";
     let storage = Vec::new();
 
     let recorder = Recorder::new(storage).await;
@@ -19,7 +19,7 @@ async fn record_event_to_persistence_backend() {
 #[tokio::test]
 async fn persist_events_in_bulk() {
     let bulks = Arc::new(Mutex::new(Vec::new()));
-    let storage = StorageSpy::new(bulks.clone());
+    let storage = BlockableStorageSpy::new(bulks.clone());
 
     let recorder = Recorder::new(storage).await;
     {
@@ -38,25 +38,43 @@ async fn persist_events_in_bulk() {
     assert_eq!(["first", "second"].as_slice(), bulks[0])
 }
 
+#[tokio::test]
+async fn read_from_storage() {
+    let storage = Vec::new();
+
+    let recorder = Recorder::new(storage).await;
+    recorder.save("first");
+    recorder.save("second");
+    let records = recorder.records().await;
+    let _ = recorder.close().await;
+
+    assert_eq!(["first", "second"].as_slice(), records);
+}
+
 /// Makes a copy of each received bulk.
-struct StorageSpy<T> {
+struct BlockableStorageSpy<T> {
     /// Make this Arc Mutex, so we can block saving and observe bulk behaviour
     bulks: Arc<Mutex<Vec<Vec<T>>>>,   
 }
 
-impl<T> StorageSpy<T> {
+impl<T> BlockableStorageSpy<T> {
     fn new(bulks: Arc<Mutex<Vec<Vec<T>>>>) -> Self {
-        StorageSpy { bulks }
+        BlockableStorageSpy { bulks }
     }
 }
 
 #[async_trait]
-impl<T> Storage for StorageSpy<T> where T: Send {
+impl<T> Storage for BlockableStorageSpy<T> where T: Send {
     type Record = T;
 
     async fn save(&mut self, records: &mut Vec<T>) {
         let mut tmp = Vec::new();
         swap(&mut tmp, records);
         self.bulks.lock().await.push(tmp);
+    }
+
+    async fn load(&mut self) -> Vec<T> {
+        // Not called yet. Dummy implementation
+        Vec::new()
     }
 }
