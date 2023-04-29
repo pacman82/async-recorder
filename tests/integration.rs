@@ -39,7 +39,7 @@ async fn persist_events_in_bulk() {
 }
 
 #[tokio::test]
-async fn read_from_storage() {
+async fn records_are_filtered_using_query() {
     let storage = Vec::new();
 
     let recorder = Recorder::new(storage).await;
@@ -48,7 +48,7 @@ async fn read_from_storage() {
     recorder.save("second");
     recorder.save("third");
     // Using this query we will only see the first two
-    let records = recorder.records(0..3).await;
+    let records = recorder.records(0..2).await;
     let _ = recorder.close().await;
 
     assert_eq!(["first", "second"].as_slice(), records);
