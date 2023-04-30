@@ -1,5 +1,5 @@
 use crate::Storage;
-use std::fmt::Formatter;
+use std::{fmt::Formatter, future::Future};
 use tokio::{
     sync::{mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender}, oneshot},
     task::JoinHandle,
@@ -31,6 +31,18 @@ where
         let (sender, receiver) = unbounded_channel();
         let actor = Actor::new(storage, receiver);
         let join_handle = tokio::spawn(actor.run());
+        Self {
+            join_handle,
+            sender,
+        }
+    }
+
+    pub fn with_lazy_storage(storage: impl Future<Output=T> + Send + 'static) -> Self {
+        let (sender, receiver) = unbounded_channel();
+        let join_handle = tokio::spawn(async {
+            let actor = Actor::new(storage.await, receiver);
+            actor.run().await
+        });
         Self {
             join_handle,
             sender,

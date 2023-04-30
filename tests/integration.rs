@@ -54,6 +54,21 @@ async fn records_are_filtered_using_query() {
     assert_eq!(["first", "second"].as_slice(), records);
 }
 
+/// When we boot up our application we may want to boot it up really fast without waiting for it to
+/// have catched up with the past, by restoring all the data from the persistence backend. Luckily
+/// we can accept save calls while still intitializing the storage backend.
+#[tokio::test]
+async fn recorder_instantiation_does_not_need_to_wait_for_persistence_backend() {
+    let lazy_storage = async { vec!["first"] };
+
+    let recorder = Recorder::with_lazy_storage(lazy_storage);
+    recorder.save("second");
+    let records = recorder.records(0..2).await;
+    let _ = recorder.close().await;
+
+    assert_eq!(["first", "second"].as_slice(), records)
+}
+
 /// Makes a copy of each received bulk.
 struct BlockableStorageSpy<T> {
     /// Make this Arc Mutex, so we can block saving and observe bulk behaviour
