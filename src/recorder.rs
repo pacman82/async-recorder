@@ -37,7 +37,7 @@ where
         }
     }
 
-    pub fn with_lazy_storage(storage: impl Future<Output=T> + Send + 'static) -> Self {
+    pub fn with_delayed_storage(storage: impl Future<Output=T> + Send + 'static) -> Self {
         let (sender, receiver) = unbounded_channel();
         let join_handle = tokio::spawn(async {
             let actor = Actor::new(storage.await, receiver);
