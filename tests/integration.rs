@@ -9,7 +9,7 @@ async fn record_event_to_persistence_backend() {
     let record = "Hello, World!";
     let storage = Vec::new();
 
-    let recorder = Recorder::new(storage).await;
+    let recorder = Recorder::new(storage);
     recorder.save(record);
     let storage = recorder.close().await;
 
@@ -21,7 +21,7 @@ async fn persist_events_in_bulk() {
     let bulks = Arc::new(Mutex::new(Vec::new()));
     let storage = BlockableStorageSpy::new(bulks.clone());
 
-    let recorder = Recorder::new(storage).await;
+    let recorder = Recorder::new(storage);
     {
         // Keep guard to bulks, so spy can not persist until it is cleared
         let _guard = bulks.lock().await;
@@ -42,7 +42,7 @@ async fn persist_events_in_bulk() {
 async fn records_are_filtered_using_query() {
     let storage = Vec::new();
 
-    let recorder = Recorder::new(storage).await;
+    let recorder = Recorder::new(storage);
     // We write three records
     recorder.save("first");
     recorder.save("second");

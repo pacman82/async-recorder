@@ -27,7 +27,7 @@ where
     T::Record: Send,
     T::Query: Send,
 {
-    pub async fn new(storage: T) -> Self {
+    pub fn new(storage: T) -> Self {
         let (sender, receiver) = unbounded_channel();
         let actor = Actor::new(storage, receiver);
         let join_handle = tokio::spawn(actor.run());
