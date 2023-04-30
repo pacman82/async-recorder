@@ -27,6 +27,9 @@ where
     T::Record: Send,
     T::Query: Send,
 {
+    /// Constructs the recorder immediatly with a readily available storage backend. While this
+    /// method is not blocking and returns control to the caller immediatly, it must still be run
+    /// within the context of an async tokio runtime since it does spawn a tokio thread.
     pub fn new(storage: T) -> Self {
         let (sender, receiver) = unbounded_channel();
         let actor = Actor::new(storage, receiver);
@@ -37,7 +40,15 @@ where
         }
     }
 
-    pub fn with_delayed_storage(storage: impl Future<Output=T> + Send + 'static) -> Self {
+    /// Constructs the recorder storage backend which will only be available ofter the future is
+    /// resolved. The recorder will be availabel immediatly though, storing all calls to save within
+    /// the message buffer. Use this contructor if you want your application to start up fast
+    /// without waiting for the storage backend to have syncronized with the persisted state.
+    /// 
+    /// While this method is not blocking and returns control to the caller immediatly, it must
+    /// still be run within the context of an async tokio runtime since it does spawn a tokio
+    /// thread.
+    pub fn from_delayed_storage(storage: impl Future<Output=T> + Send + 'static) -> Self {
         let (sender, receiver) = unbounded_channel();
         let join_handle = tokio::spawn(async {
             let actor = Actor::new(storage.await, receiver);

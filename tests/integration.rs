@@ -61,7 +61,7 @@ async fn records_are_filtered_using_query() {
 async fn recorder_instantiation_does_not_need_to_wait_for_persistence_backend() {
     let lazy_storage = async { vec!["first"] };
 
-    let recorder = Recorder::with_delayed_storage(lazy_storage);
+    let recorder = Recorder::from_delayed_storage(lazy_storage);
     recorder.save("second");
     let records = recorder.records(0..2).await;
     let _ = recorder.close().await;
