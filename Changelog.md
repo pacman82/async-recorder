@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1
+
+* Added implementations for `Box<dyn Storage<..>>` in order to support scenarios there you want to choose the backend at runtime.
+
 ## 0.3.0
 
 * Adds `from_delayed_storage` to support fast boot times for applications using recorder.

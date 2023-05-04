@@ -46,3 +46,17 @@ where
         self[query].to_owned()
     }
 }
+
+#[async_trait]
+impl<Q, R> Storage for Box<dyn Storage<Query = Q, Record = R> + Send> where Q: Send, R: Send {
+    type Query = Q;
+    type Record = R;
+
+    async fn save(&mut self, records: &mut Vec<R>) {
+        (**self).save(records).await
+    }
+
+    async fn load(&mut self, query: Q) -> Vec<R> {
+        (**self).load(query).await
+    }
+}

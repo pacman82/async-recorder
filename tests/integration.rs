@@ -1,4 +1,4 @@
-use std::{mem::swap, sync::Arc};
+use std::{mem::swap, ops::Range, sync::Arc};
 
 use async_recorder::{Recorder, Storage};
 use async_trait::async_trait;
@@ -69,10 +69,23 @@ async fn recorder_instantiation_does_not_need_to_wait_for_persistence_backend() 
     assert_eq!(["first", "second"].as_slice(), records)
 }
 
+#[tokio::test]
+async fn recorder_should_be_able_to_work_with_a_storage_decided_at_runtime() {
+    let dynamic_storage: Box<
+        dyn Storage<Record = &'static str, Query = Range<usize>> + Send + 'static,
+    > = Box::<Vec<&str>>::default();
+
+    let recoder = Recorder::new(dynamic_storage);
+    recoder.save("Hello, World!");
+    let first_record = recoder.records(0..1).await;
+
+    assert_eq!(["Hello, World!"].as_slice(), first_record);
+}
+
 /// Makes a copy of each received bulk.
 struct BlockableStorageSpy<T> {
     /// Make this Arc Mutex, so we can block saving and observe bulk behaviour
-    bulks: Arc<Mutex<Vec<Vec<T>>>>,   
+    bulks: Arc<Mutex<Vec<Vec<T>>>>,
 }
 
 impl<T> BlockableStorageSpy<T> {
@@ -82,7 +95,10 @@ impl<T> BlockableStorageSpy<T> {
 }
 
 #[async_trait]
-impl<T> Storage for BlockableStorageSpy<T> where T: Send {
+impl<T> Storage for BlockableStorageSpy<T>
+where
+    T: Send,
+{
     type Record = T;
     type Query = ();
 
